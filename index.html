@@ -14,7 +14,8 @@
 <body>
   <div id="info">
     <h3>FECART - Piso Piezoelétrico</h3>
-    <p>O piso é pintado apenas nos pontos de passagem dos pedestres.</p>
+    <p>O piso esquenta de cor conforme o acúmulo de passos:</p>
+    <p>⚪ Sem tráfego ➔ 🟢 Pouco ➔ 🟡 Médio ➔ 🔴 Alto ➔ 🟣 Extremo</p>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -22,7 +23,7 @@
   <script>
     // 1. Configuração da Cena (Fundo Cinza)
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x2b2b2b); // Fundo cinza
+    scene.background = new THREE.Color(0x2b2b2b);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 10, 10);
@@ -32,9 +33,9 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // 2. Criar o Piso Malhado (Grid de Vértices)
+    // 2. Criar o Piso Malhado
     const largura = 10, profundidade = 10;
-    const segmentos = 50; 
+    const segmentos = 60; // Resolução alta para transição suave
     const geometry = new THREE.PlaneGeometry(largura, profundidade, segmentos, segmentos);
     geometry.rotateX(-Math.PI / 2);
 
@@ -42,11 +43,11 @@
     const colors = new Float32Array(count * 3);
     const intensidades = new Float32Array(count); 
 
-    // Inicializar o piso com cor cinza escuro neutro (SEM FICAR VERMELHO)
+    // Inicializar o piso com cinza escuro neutro
     for (let i = 0; i < count; i++) {
-      colors[i * 3] = 0.15;     // Red (Cinza escuro)
-      colors[i * 3 + 1] = 0.15; // Green
-      colors[i * 3 + 2] = 0.15; // Blue
+      colors[i * 3] = 0.15;     // R
+      colors[i * 3 + 1] = 0.15; // G
+      colors[i * 3 + 2] = 0.15; // B
       intensidades[i] = 0;
     }
 
@@ -56,14 +57,14 @@
     const piso = new THREE.Mesh(geometry, materialPiso);
     scene.add(piso);
 
-    // Linhas do Grid
+    // Grid visual
     const grid = new THREE.GridHelper(10, 10, 0x555555, 0x333333);
     grid.position.y = 0.01;
     scene.add(grid);
 
     // 3. Criar os Pedestres
     const pedestres = [];
-    const numPedestres = 5;
+    const numPedestres = 6;
 
     for (let i = 0; i < numPedestres; i++) {
       const pGeo = new THREE.SphereGeometry(0.25, 16, 16);
@@ -79,12 +80,12 @@
       scene.add(pedestre);
       pedestres.push({
         mesh: pedestre,
-        dx: (Math.random() - 0.5) * 0.05,
-        dz: (Math.random() - 0.5) * 0.05
+        dx: (Math.random() - 0.5) * 0.06,
+        dz: (Math.random() - 0.5) * 0.06
       });
     }
 
-    // 4. Lógica de Pintura Apenas no Ponto do Pé
+    // 4. Lógica de Acúmulo de Calor: Verde -> Amarelo -> Vermelho -> Roxo
     const posAttribute = geometry.attributes.position;
     const colorAttribute = geometry.attributes.color;
 
@@ -99,18 +100,43 @@
 
           const dist = Math.sqrt((vx - px) ** 2 + (vz - pz) ** 2);
 
-          // Pinta apenas num raio pequeno de 0.6 em volta do pé
+          // Incrementa o acúmulo de passos apenas onde o pé toca
           if (dist < 0.6) {
-            intensidades[i] = Math.min(intensidades[i] + (0.6 - dist) * 0.08, 1.0);
-            const val = intensidades[i];
+            intensidades[i] = Math.min(intensidades[i] + (0.6 - dist) * 0.03, 1.0);
+          }
 
-            if (val < 0.5) {
-              // Verde para pouco tráfego
-              colorAttribute.setXYZ(i, val * 2, 0.8, 0.0); 
+          const val = intensidades[i];
+
+          if (val > 0) {
+            let r = 0.15, g = 0.15, b = 0.15;
+
+            if (val <= 0.25) {
+              // 1. Cinza -> Verde (Pouco fluxo)
+              const factor = val / 0.25;
+              r = 0.15 * (1 - factor);
+              g = 0.15 + (0.85 * factor);
+              b = 0.15 * (1 - factor);
+            } else if (val <= 0.5) {
+              // 2. Verde -> Amarelo (Fluxo médio)
+              const factor = (val - 0.25) / 0.25;
+              r = factor;
+              g = 1.0;
+              b = 0.0;
+            } else if (val <= 0.75) {
+              // 3. Amarelo -> Vermelho (Alto fluxo)
+              const factor = (val - 0.5) / 0.25;
+              r = 1.0;
+              g = 1.0 - factor;
+              b = 0.0;
             } else {
-              // Transição para Amarelo e Vermelho no alto fluxo
-              colorAttribute.setXYZ(i, 1.0, 1.0 - ((val - 0.5) * 2), 0.0); 
+              // 4. Vermelho -> Roxo (Fluxo extremo/saturação)
+              const factor = (val - 0.75) / 0.25;
+              r = 1.0 - (0.5 * factor); // Vermelho reduz para escurecer o roxo
+              g = 0.0;
+              b = factor * 0.8;         // Azul sobe para formar roxo
             }
+
+            colorAttribute.setXYZ(i, r, g, b);
           }
         }
       });
