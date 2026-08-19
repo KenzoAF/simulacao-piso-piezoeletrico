@@ -433,7 +433,7 @@
     });
 
     // ==========================================
-    // 4. MOTOR DO MAPA DE CALOR DINÂMICO
+    // 4. MOTOR DO MAPA DE CALOR DINÂMICO (TEXTURA DO TABULEIRO)
     // ==========================================
     const heatCanvas = document.createElement('canvas');
     heatCanvas.width = HEATMAP_RES;
@@ -446,16 +446,24 @@
     outputCanvas.height = HEATMAP_RES;
     const outputCtx = outputCanvas.getContext('2d');
 
+    // Desenha a base inicial do piso/tabuleiro com alternância de tom nas celulas
     function initFloorCanvas() {
       outputCtx.fillStyle = '#0f141c';
       outputCtx.fillRect(0, 0, HEATMAP_RES, HEATMAP_RES);
 
-      outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      outputCtx.lineWidth = 1;
-      const step = HEATMAP_RES / 20;
-      for (let i = 0; i <= HEATMAP_RES; i += step) {
-        outputCtx.beginPath(); outputCtx.moveTo(i, 0); outputCtx.lineTo(i, HEATMAP_RES); outputCtx.stroke();
-        outputCtx.beginPath(); outputCtx.moveTo(0, i); outputCtx.lineTo(HEATMAP_RES, i); outputCtx.stroke();
+      const numSquares = 16;
+      const squareSize = HEATMAP_RES / numSquares;
+
+      for (let r = 0; r < numSquares; r++) {
+        for (let c = 0; c < numSquares; c++) {
+          const isEven = (r + c) % 2 === 0;
+          outputCtx.fillStyle = isEven ? '#121824' : '#0c1017';
+          outputCtx.fillRect(c * squareSize, r * squareSize, squareSize, squareSize);
+          
+          outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+          outputCtx.lineWidth = 1;
+          outputCtx.strokeRect(c * squareSize, r * squareSize, squareSize, squareSize);
+        }
       }
     }
     initFloorCanvas();
@@ -556,24 +564,30 @@
 
     // ==========================================
     // 7. CÁLCULO E PINTURA DO MAPA DE CALOR
-    // Sequência: Neutro -> Verde -> Amarelo -> Laranja -> Vermelho
+    // Transição: Verde -> Amarelo -> Laranja -> Vermelho
     // ==========================================
     const stampRadius = 14;      
     const maxHeatValue = 1.0; 
 
-    function getHeatColor(val) {
+    function getHeatColor(val, pixelX, pixelY) {
       if (val <= 0.005) {
-        return [15, 20, 28, 255]; // Neutro (Cinza Escuro)
+        // Preserva o padrão xadrez/tabuleiro nas partes não pisadas
+        const numSquares = 16;
+        const squareSize = HEATMAP_RES / numSquares;
+        const col = Math.floor(pixelX / squareSize);
+        const row = Math.floor(pixelY / squareSize);
+        const isEven = (row + col) % 2 === 0;
+        return isEven ? [18, 24, 36, 255] : [12, 16, 23, 255];
       }
 
       let r, g, b;
 
       if (val <= 0.25) {
-        // Estágio 1: Neutro -> Verde
+        // Estágio 1: Base -> Verde
         const t = val / 0.25;
-        r = Math.round(15 + (34 - 15) * t);
-        g = Math.round(20 + (197 - 20) * t);
-        b = Math.round(28 + (94 - 28) * t);
+        r = Math.round(18 + (34 - 18) * t);
+        g = Math.round(24 + (197 - 24) * t);
+        b = Math.round(36 + (94 - 36) * t);
       } else if (val <= 0.50) {
         // Estágio 2: Verde -> Amarelo
         const t = (val - 0.25) / 0.25;
@@ -625,12 +639,17 @@
       const data = imgData.data;
       let activePixels = 0;
 
-      for (let i = 0; i < heatGrid.length; i++) {
-        const val = heatGrid[i];
-        if (val > 0.005) {
-          activePixels++;
-          const col = getHeatColor(val);
+      for (let y = 0; y < HEATMAP_RES; y++) {
+        for (let x = 0; x < HEATMAP_RES; x++) {
+          const i = y * HEATMAP_RES + x;
+          const val = heatGrid[i];
           const pIdx = i * 4;
+
+          if (val > 0.005) {
+            activePixels++;
+          }
+
+          const col = getHeatColor(val, x, y);
           data[pIdx]     = col[0];
           data[pIdx + 1] = col[1];
           data[pIdx + 2] = col[2];
@@ -640,10 +659,12 @@
 
       outputCtx.putImageData(imgData, 0, 0);
 
-      outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      // Linhas do tabuleiro
+      const numSquares = 16;
+      const squareSize = HEATMAP_RES / numSquares;
+      outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       outputCtx.lineWidth = 1;
-      const step = HEATMAP_RES / 20;
-      for (let i = 0; i <= HEATMAP_RES; i += step) {
+      for (let i = 0; i <= HEATMAP_RES; i += squareSize) {
         outputCtx.beginPath(); outputCtx.moveTo(i, 0); outputCtx.lineTo(i, HEATMAP_RES); outputCtx.stroke();
         outputCtx.beginPath(); outputCtx.moveTo(0, i); outputCtx.lineTo(HEATMAP_RES, i); outputCtx.stroke();
       }
