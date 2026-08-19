@@ -1,2 +1,0 @@
-# simulacao-piso-piezoeletrico
-Simulação
