@@ -8,7 +8,7 @@
 
 Acesse a simulação rodando ao vivo no navegador:
 
-👉 **[CLIQUE AQUI PARA ABRIR A SIMULAÇÃO 3D](https://SEU-USUARIO.github.io/simulacao-piso-piezoeletrico/)**
+👉 **[CLIQUE AQUI PARA ABRIR A SIMULAÇÃO 3D](https://KenzoAF.github.io/simulacao-piso-piezoeletrico/)**
 
 *(Substitua `SEU-USUARIO` pelo seu nome de usuário exato no GitHub)*
 
