@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
-  <title>Simulação 3D - Mapa de Calor Piso Piezoelétrico</title>
+  <title>Simulação 3D - Mapa de Calor Acumulado</title>
   <style>
     body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #2b2b2b; }
     #info {
@@ -14,14 +14,14 @@
 <body>
   <div id="info">
     <h3>FECART - Piso Piezoelétrico</h3>
-    <p>O piso esquenta de cor conforme o acúmulo de passos:</p>
+    <p>Evolução por acúmulo de passadas no mesmo local:</p>
     <p>⚪ Sem tráfego ➔ 🟢 Pouco ➔ 🟡 Médio ➔ 🔴 Alto ➔ 🟣 Extremo</p>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
   <script>
-    // 1. Configuração da Cena (Fundo Cinza)
+    // 1. Cena com fundo cinza
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x2b2b2b);
 
@@ -33,22 +33,22 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // 2. Criar o Piso Malhado
+    // 2. Criar o Piso
     const largura = 10, profundidade = 10;
-    const segmentos = 60; // Resolução alta para transição suave
+    const segmentos = 60;
     const geometry = new THREE.PlaneGeometry(largura, profundidade, segmentos, segmentos);
     geometry.rotateX(-Math.PI / 2);
 
     const count = geometry.attributes.position.count;
     const colors = new Float32Array(count * 3);
-    const intensidades = new Float32Array(count); 
+    const acumuladorPassos = new Float32Array(count); // Guarda a quantidade de vezes que pessoas passaram no local
 
-    // Inicializar o piso com cinza escuro neutro
+    // Inicializar o piso em cinza escuro neutro
     for (let i = 0; i < count; i++) {
-      colors[i * 3] = 0.15;     // R
-      colors[i * 3 + 1] = 0.15; // G
-      colors[i * 3 + 2] = 0.15; // B
-      intensidades[i] = 0;
+      colors[i * 3] = 0.15;     // Red
+      colors[i * 3 + 1] = 0.15; // Green
+      colors[i * 3 + 2] = 0.15; // Blue
+      acumuladorPassos[i] = 0;
     }
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -57,7 +57,7 @@
     const piso = new THREE.Mesh(geometry, materialPiso);
     scene.add(piso);
 
-    // Grid visual
+    // Linhas do Grid
     const grid = new THREE.GridHelper(10, 10, 0x555555, 0x333333);
     grid.position.y = 0.01;
     scene.add(grid);
@@ -85,7 +85,7 @@
       });
     }
 
-    // 4. Lógica de Acúmulo de Calor: Verde -> Amarelo -> Vermelho -> Roxo
+    // 4. Lógica de Progressão Conforme Mais Pessoas Passam
     const posAttribute = geometry.attributes.position;
     const colorAttribute = geometry.attributes.color;
 
@@ -100,40 +100,43 @@
 
           const dist = Math.sqrt((vx - px) ** 2 + (vz - pz) ** 2);
 
-          // Incrementa o acúmulo de passos apenas onde o pé toca
-          if (dist < 0.6) {
-            intensidades[i] = Math.min(intensidades[i] + (0.6 - dist) * 0.03, 1.0);
+          // Somar fluxo apenas no raio de toque
+          if (dist < 0.5) {
+            // Quanto mais perto do centro do pé, mais rápido acumula
+            const pesoPasso = (0.5 - dist) * 0.015; 
+            acumuladorPassos[i] = Math.min(acumuladorPassos[i] + pesoPasso, 1.0);
           }
 
-          const val = intensidades[i];
+          // Atualizar a cor com base no total acumulado de passadas
+          const val = acumuladorPassos[i];
 
           if (val > 0) {
             let r = 0.15, g = 0.15, b = 0.15;
 
             if (val <= 0.25) {
-              // 1. Cinza -> Verde (Pouco fluxo)
-              const factor = val / 0.25;
-              r = 0.15 * (1 - factor);
-              g = 0.15 + (0.85 * factor);
-              b = 0.15 * (1 - factor);
-            } else if (val <= 0.5) {
-              // 2. Verde -> Amarelo (Fluxo médio)
-              const factor = (val - 0.25) / 0.25;
-              r = factor;
+              // Estágio 1: Cinza -> Verde (Primeiras pessoas passando)
+              const t = val / 0.25;
+              r = 0.15 * (1 - t);
+              g = 0.15 + (0.85 * t);
+              b = 0.15 * (1 - t);
+            } else if (val <= 0.50) {
+              // Estágio 2: Verde -> Amarelo (Tráfego moderado)
+              const t = (val - 0.25) / 0.25;
+              r = t;
               g = 1.0;
               b = 0.0;
             } else if (val <= 0.75) {
-              // 3. Amarelo -> Vermelho (Alto fluxo)
-              const factor = (val - 0.5) / 0.25;
+              // Estágio 3: Amarelo -> Vermelho (Tráfego alto)
+              const t = (val - 0.50) / 0.25;
               r = 1.0;
-              g = 1.0 - factor;
+              g = 1.0 - t;
               b = 0.0;
             } else {
-              // 4. Vermelho -> Roxo (Fluxo extremo/saturação)
-              const factor = (val - 0.75) / 0.25;
-              r = 1.0 - (0.5 * factor); // Vermelho reduz para escurecer o roxo
+              // Estágio 4: Vermelho -> Roxo (Várias pessoas passaram repetidamente)
+              const t = (val - 0.75) / 0.25;
+              r = 1.0 - (0.5 * t);
               g = 0.0;
-              b = factor * 0.8;         // Azul sobe para formar roxo
+              b = t * 0.8;
             }
 
             colorAttribute.setXYZ(i, r, g, b);
@@ -144,7 +147,7 @@
       colorAttribute.needsUpdate = true;
     }
 
-    // 5. Loop de Animação
+    // 5. Loop da Simulação
     function animate() {
       requestAnimationFrame(animate);
 
