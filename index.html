@@ -282,46 +282,46 @@
       Conversão mecânica-elétrica via efeito piezoelétrico acionado pelo tráfego de pedestres.
     </p>
 
-    <div class="section-title">Mapa de Calor (Densidade vs Geração)</div>
+    <div class="section-title">Mapa de Calor por Passadas</div>
     <div class="legend-container">
       <div class="legend-item">
         <div class="legend-color-box">
           <div class="color-swatch swatch-neutral"></div>
-          <span class="legend-traffic">Inativo / Neutro</span>
+          <span class="legend-traffic">Inativo</span>
         </div>
-        <span class="legend-energy">0 W (0 J)</span>
+        <span class="legend-energy">0 Passadas</span>
       </div>
 
       <div class="legend-item">
         <div class="legend-color-box">
           <div class="color-swatch swatch-low"></div>
-          <span class="legend-traffic">Baixo Tráfego</span>
+          <span class="legend-traffic">Verde</span>
         </div>
-        <span class="legend-energy">&lt; 15 W (Leve)</span>
+        <span class="legend-energy">1 Passada</span>
       </div>
 
       <div class="legend-item">
         <div class="legend-color-box">
           <div class="color-swatch swatch-mid"></div>
-          <span class="legend-traffic">Médio Tráfego</span>
+          <span class="legend-traffic">Amarelo</span>
         </div>
-        <span class="legend-energy">15 - 35 W</span>
+        <span class="legend-energy">2 Passadas</span>
       </div>
 
       <div class="legend-item">
         <div class="legend-color-box">
           <div class="color-swatch swatch-high"></div>
-          <span class="legend-traffic">Alto Tráfego</span>
+          <span class="legend-traffic">Laranja</span>
         </div>
-        <span class="legend-energy">35 - 60 W</span>
+        <span class="legend-energy">3 Passadas</span>
       </div>
 
       <div class="legend-item">
         <div class="legend-color-box">
           <div class="color-swatch swatch-extreme"></div>
-          <span class="legend-traffic">Tráfego Intenso</span>
+          <span class="legend-traffic">Vermelho</span>
         </div>
-        <span class="legend-energy">&gt; 60 W (Pico)</span>
+        <span class="legend-energy">4+ Passadas</span>
       </div>
     </div>
 
@@ -564,13 +564,17 @@
 
     // ==========================================
     // 7. CÁLCULO E PINTURA DO MAPA DE CALOR
-    // Transição: Verde -> Amarelo -> Laranja -> Vermelho
+    // Regra pedida: 
+    // - 0 passadas: neutro (tabuleiro)
+    // - 1 passada: Verde
+    // - 2 passadas: Amarelo
+    // - 3 passadas: Laranja
+    // - 4+ passadas: Vermelho
     // ==========================================
     const stampRadius = 14;      
-    const maxHeatValue = 1.0; 
 
     function getHeatColor(val, pixelX, pixelY) {
-      if (val <= 0.005) {
+      if (val < 0.1) {
         // Preserva o padrão xadrez/tabuleiro nas partes não pisadas
         const numSquares = 16;
         const squareSize = HEATMAP_RES / numSquares;
@@ -580,35 +584,20 @@
         return isEven ? [18, 24, 36, 255] : [12, 16, 23, 255];
       }
 
-      let r, g, b;
-
-      if (val <= 0.25) {
-        // Estágio 1: Base -> Verde
-        const t = val / 0.25;
-        r = Math.round(18 + (34 - 18) * t);
-        g = Math.round(24 + (197 - 24) * t);
-        b = Math.round(36 + (94 - 36) * t);
-      } else if (val <= 0.50) {
-        // Estágio 2: Verde -> Amarelo
-        const t = (val - 0.25) / 0.25;
-        r = Math.round(34 + (234 - 34) * t);
-        g = Math.round(197 + (179 - 197) * t);
-        b = Math.round(94 + (8 - 94) * t);
-      } else if (val <= 0.75) {
-        // Estágio 3: Amarelo -> Laranja
-        const t = (val - 0.50) / 0.25;
-        r = Math.round(234 + (249 - 234) * t);
-        g = Math.round(179 + (115 - 179) * t);
-        b = Math.round(8 + (22 - 8) * t);
-      } else {
-        // Estágio 4: Laranja -> Vermelho
-        const t = Math.min(1.0, (val - 0.75) / 0.25);
-        r = Math.round(249 + (239 - 249) * t);
-        g = Math.round(115 + (68 - 115) * t);
-        b = Math.round(22 + (68 - 22) * t);
+      // 1 Passada (Verde)
+      if (val < 1.5) {
+        return [34, 197, 94, 255];
       }
-
-      return [r, g, b, 255];
+      // 2 Passadas (Amarelo)
+      if (val < 2.5) {
+        return [234, 179, 8, 255];
+      }
+      // 3 Passadas (Laranja)
+      if (val < 3.5) {
+        return [249, 115, 22, 255];
+      }
+      // 4 ou mais passadas (Vermelho)
+      return [239, 68, 68, 255];
     }
 
     function addHeatAtWorldPos(wx, wz) {
@@ -627,7 +616,8 @@
           if (dist2 <= r2) {
             const factor = Math.exp(-dist2 / (2 * (stampRadius / 2.2) ** 2));
             const idx = y * HEATMAP_RES + x;
-            heatGrid[idx] = Math.min(maxHeatValue, heatGrid[idx] + factor * 0.08);
+            // Incrementa o valor acumulativo de passadas no ponto
+            heatGrid[idx] += factor * 0.45;
           }
         }
       }
@@ -645,7 +635,7 @@
           const val = heatGrid[i];
           const pIdx = i * 4;
 
-          if (val > 0.005) {
+          if (val >= 0.1) {
             activePixels++;
           }
 
@@ -659,10 +649,10 @@
 
       outputCtx.putImageData(imgData, 0, 0);
 
-      // Linhas do tabuleiro
+      // Desenha as linhas do grid sobre a textura
       const numSquares = 16;
       const squareSize = HEATMAP_RES / numSquares;
-      outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      outputCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       outputCtx.lineWidth = 1;
       for (let i = 0; i <= HEATMAP_RES; i += squareSize) {
         outputCtx.beginPath(); outputCtx.moveTo(i, 0); outputCtx.lineTo(i, HEATMAP_RES); outputCtx.stroke();
