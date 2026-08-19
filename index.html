@@ -7,99 +7,137 @@
     body { margin: 0; overflow: hidden; font-family: sans-serif; }
     #info {
       position: absolute; top: 10px; left: 10px; color: white;
-      background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;
+      background: rgba(0,0,0,0.8); padding: 12px; border-radius: 6px;
     }
   </style>
 </head>
 <body>
   <div id="info">
-    <h3>Monitoramento de Fluxo Urbano</h3>
-    <p>Simulação de pedestres em setores</p>
-    <p>Status Setor Central: <b id="status" style="color: green;">Baixo Fluxo</b></p>
+    <h3>Monitoramento de Fluxo em Tempo Real</h3>
+    <p>O piso é pintado apenas nos pontos de passagem dos pedestres.</p>
   </div>
 
-  <!-- Bibliotecas 3D e Mapa de Calor via CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
   <script>
-    // 1. Configuração da Cena e Câmera
+    // 1. Configuração da Cena
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
+    scene.background = new THREE.Color(0x111111);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 12, 12);
+    camera.position.set(0, 10, 10);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // 2. Criar o Piso dividido em Setores
-    const geometry = new THREE.PlaneGeometry(10, 10);
-    const materialPiso = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+    // 2. Criar o Piso Malhado (Grid de Vértices)
+    const largura = 10, profundidade = 10;
+    const segmentos = 40; // Maior resolução para a pintura suave
+    const geometry = new THREE.PlaneGeometry(largura, profundidade, segmentos, segmentos);
+    geometry.rotateX(-Math.PI / 2);
+
+    // Array de cores por vértice para criar o rastro
+    const count = geometry.attributes.position.count;
+    const colors = new Float32Array(count * 3);
+    const intensidades = new Float32Array(count); // Guardar acúmulo de passos por ponto
+
+    // Inicializar o chão com cor cinza neutra
+    for (let i = 0; i < count; i++) {
+      colors[i * 3] = 0.2;     // R
+      colors[i * 3 + 1] = 0.2; // G
+      colors[i * 3 + 2] = 0.2; // B
+      intensidades[i] = 0;
+    }
+
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const materialPiso = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const piso = new THREE.Mesh(geometry, materialPiso);
-    piso.rotation.x = Math.PI / 2;
     scene.add(piso);
 
-    // Grid para visualização dos setores
-    const grid = new THREE.GridHelper(10, 10);
+    // Grid visual de apoio
+    const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+    grid.position.y = 0.01;
     scene.add(grid);
 
-    // 3. Criar os Pedestres (Agentes)
+    // 3. Criar os Pedestres
     const pedestres = [];
-    const numeroPedestres = 5;
+    const numPedestres = 6;
 
-    for (let i = 0; i < numeroPedestres; i++) {
-      const pGeo = new THREE.SphereGeometry(0.3, 16, 16);
+    for (let i = 0; i < numPedestres; i++) {
+      const pGeo = new THREE.SphereGeometry(0.25, 16, 16);
       const pMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       const pedestre = new THREE.Mesh(pGeo, pMat);
-      
+
       pedestre.position.set(
         (Math.random() - 0.5) * 8,
-        0.3,
+        0.25,
         (Math.random() - 0.5) * 8
       );
-      
+
       scene.add(pedestre);
       pedestres.push({
         mesh: pedestre,
-        dx: (Math.random() - 0.5) * 0.08,
-        dz: (Math.random() - 0.5) * 0.08
+        dx: (Math.random() - 0.5) * 0.06,
+        dz: (Math.random() - 0.5) * 0.06
       });
     }
 
-    let contadorPassosCentral = 0;
+    // 4. Lógica de Pintura do Mapa de Calor por Onde a Pessoa Passa
+    const posAttribute = geometry.attributes.position;
+    const colorAttribute = geometry.attributes.color;
 
-    // 4. Loop de Animação e Lógica do Mapa de Calor
+    function atualizarMapaDeCalor() {
+      pedestres.forEach(p => {
+        const px = p.mesh.position.x;
+        const pz = p.mesh.position.z;
+
+        // Verificar a distância de cada ponto do piso em relação ao pedestre
+        for (let i = 0; i < count; i++) {
+          const vx = posAttribute.getX(i);
+          const vz = posAttribute.getZ(i);
+
+          const dist = Math.sqrt((vx - px) ** 2 + (vz - pz) ** 2);
+
+          // Raio de toque da pessoa no chão (0.8 unidades)
+          if (dist < 0.8) {
+            // Aumentar o calor na região atingida
+            intensidades[i] = Math.min(intensidades[i] + (0.8 - dist) * 0.05, 1.0);
+
+            const val = intensidades[i];
+
+            // Gradiente de cores: Verde -> Amarelo -> Vermelho
+            if (val < 0.5) {
+              // Transição do cinza para o verde e depois amarelo
+              colorAttribute.setXYZ(i, val * 2, 0.8, 0.2); 
+            } else {
+              // Transição do amarelo para o vermelho intenso
+              colorAttribute.setXYZ(i, 1.0, 1.0 - (val - 0.5) * 2, 0.0); 
+            }
+          }
+        }
+      });
+
+      colorAttribute.needsUpdate = true;
+    }
+
+    // 5. Loop Principal
     function animate() {
       requestAnimationFrame(animate);
 
+      // Movimento das pessoas
       pedestres.forEach(p => {
         p.mesh.position.x += p.dx;
         p.mesh.position.z += p.dz;
 
-        // Rebater nas bordas
-        if (Math.abs(p.mesh.position.x) > 4.5) p.dx *= -1;
-        if (Math.abs(p.mesh.position.z) > 4.5) p.dz *= -1;
-
-        // Checar se passou pelo Setor Central (Área de alta relevância)
-        if (Math.abs(p.mesh.position.x) < 2 && Math.abs(p.mesh.position.z) < 2) {
-          contadorPassosCentral++;
-        }
+        // Inverter direção nas bordas
+        if (Math.abs(p.mesh.position.x) > 4.2) p.dx *= -1;
+        if (Math.abs(p.mesh.position.z) > 4.2) p.dz *= -1;
       });
 
-      // Atualizar cor do piso de acordo com o acúmulo de tráfego
-      const statusEl = document.getElementById("status");
-      if (contadorPassosCentral > 300) {
-        materialPiso.color.setHex(0xff0000); // Vermelho: Recomendado para Piso Piezoelétrico
-        statusEl.innerText = "ALTO FLUXO (Ideal para Piso Piezoelétrico)";
-        statusEl.style.color = "red";
-      } else if (contadorPassosCentral > 100) {
-        materialPiso.color.setHex(0xffff00); // Amarelo: Fluxo Médio
-        statusEl.innerText = "Médio Fluxo";
-        statusEl.style.color = "yellow";
-      }
-
+      atualizarMapaDeCalor();
       renderer.render(scene, camera);
     }
 
